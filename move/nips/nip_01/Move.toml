@@ -1,0 +1,33 @@
+[package]
+name = "nip_01"
+version = "1.0.0"
+authors = ["ZHANG, HENGMING"]
+
+[addresses]
+std = "0x1"
+moveos_std = "0x2"
+rooch_framework = "0x3"
+nip_01_addr = "_"
+
+[dev-addresses]
+nip_01_addr = "0x111"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-framework.git"
+rev = "mainnet"
+subdir = "aptos-framework"
+
+[dev-dependencies.MoveStdlib]
+git = "https://github.com/rooch-network/rooch.git"
+rev = "main"
+subdir = "frameworks/move-stdlib"
+
+[dev-dependencies.MoveosStdlib]
+git = "https://github.com/rooch-network/rooch.git"
+rev = "main"
+subdir = "frameworks/moveos-stdlib"
+
+[dev-dependencies.RoochFramework]
+git = "https://github.com/rooch-network/rooch.git"
+rev = "main"
+subdir = "frameworks/rooch-framework"
