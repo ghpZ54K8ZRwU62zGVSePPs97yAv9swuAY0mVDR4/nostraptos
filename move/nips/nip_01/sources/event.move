@@ -14,9 +14,10 @@ module nip_01_addr::event {
     use std::vector;
     use std::string::{Self, String};
     use std::option::{Self, Option};
-    use moveos_std::signer;
-    use moveos_std::object::{Self, ObjectID};
-    use moveos_std::hash;
+    use std::signer;
+    use std::hash;
+    use aptos_framework::object::{Self, Object};
+    // TODO: hex
     use moveos_std::hex;
     use moveos_std::timestamp;
     use moveos_std::event;
@@ -24,6 +25,9 @@ module nip_01_addr::event {
     use moveos_std::string_utils;
     use rooch_framework::ecdsa_k1;
     use nip_01::inner;
+
+    // Object names
+    const EVENT_STORE_NAME: vector<u8> = b"EventStore";
 
     // Kind of the event
     const EVENT_KIND_USER_METADATA: u16 = 0;
@@ -163,9 +167,9 @@ module nip_01_addr::event {
     }
 
     // Clean the old user metadata when there is a new one from event store object id
-    fun clean_user_metadata(event_store_object_id: ObjectID) {
+    fun clean_user_metadata<EventStore>(event_store_object: Object<EventStore>) {
         // borrow event store from the event store object id
-        let event_store = borrow_event_store_from_object_id(event_store_object_id);
+        let event_store = borrow_event_store_from_object_id(event_store_object_address);
         // borrow inner events
         let events = borrow_events(event_store);
         // find the index of the user metadata event
@@ -176,7 +180,7 @@ module nip_01_addr::event {
         // remove the first occurrence of the user metadata if there's an old user metadata
         if (user_metatada_exists) {
             // borrow mutable event store from the event store object id
-            let event_store_mut = borrow_mut_event_store_from_object_id(event_store_object_id);
+            let event_store_mut = borrow_mut_event_store_from_object_address(event_store_object_address);
             // borrow inner mutable events
             let events_mut = borrow_mut_events(event_store_mut);
             // use remove since the ordering isn't priority
@@ -221,9 +225,9 @@ module nip_01_addr::event {
         if (kind == EVENT_KIND_USER_METADATA) {
             check_user_metadata(content);
             // clear past user metadata events from the user with the same rooch address from the public key
-            let event_store_object_id = event_store_object_id(rooch_address);
-            if (object::exists_object_with_type<EventStore>(event_store_object_id)) {
-                clean_user_metadata(event_store_object_id);
+            let event_store_object_address = event_store_object_address(rooch_address);
+            if (object::exists_object_with_type<EventStore>(event_store_object_address)) {
+                clean_user_metadata(event_store_object_address);
             };
         };
 
@@ -245,9 +249,9 @@ module nip_01_addr::event {
         vector::push_back<Event>(events_mut, event);
 
         // emit a move event nofitication
-        let event_store_object_id = event_store_object_id(rooch_address);
+        let event_store_object_address = event_store_object_address(rooch_address);
         let move_event = NostrEventCreatedEvent {
-            id: event_store_object_id
+            id: event_store_object_address
         };
         event::emit(move_event);
 
@@ -262,18 +266,18 @@ module nip_01_addr::event {
     }
 
     /// Update a signature under the sig field of an Event
-    public fun update_event_signature(signer: &signer, signature: String): vector<u8> {
-        // get the signer's rooch address
-        let rooch_address = signer::address_of(signer);
+    public fun update_event_signature(caller: &signer, signature: String): vector<u8> {
+        // get the caller's address
+        let caller_address = signer::address_of(caller);
 
         // get the event store object id from the address
-        let event_store_object_id = event_store_object_id(rooch_address);
+        let event_store_object_address = event_store_object_address(rooch_address);
 
         // check the event store object id if it exists
-        assert!(object::exists_object_with_type<EventStore>(event_store_object_id), ErrorEventStoreNotExist);
+        assert!(object::exists_object_with_type<EventStore>(event_store_object_address), ErrorEventStoreNotExist);
 
         // borrow mutable event store from the event store object id
-        let event_store_mut = borrow_mut_event_store_from_object_id(event_store_object_id);
+        let event_store_mut = borrow_mut_event_store_from_object_address(event_store_object_address);
 
         // borrow inner mutable events
         let events_mut = borrow_mut_events(event_store_mut);
@@ -301,7 +305,7 @@ module nip_01_addr::event {
 
         // emit a move event nofitication
         let move_event = NostrEventUpdatedEvent {
-            id: event_store_object_id
+            id: event_store_object_address
         };
         event::emit(move_event);
 
@@ -344,9 +348,9 @@ module nip_01_addr::event {
         if (kind == EVENT_KIND_USER_METADATA) {
             check_user_metadata(content);
             // clear past user metadata events from the user with the same rooch address from the public key
-            let event_store_object_id = event_store_object_id(rooch_address);
-            if (object::exists_object_with_type<EventStore>(event_store_object_id)) {
-                clean_user_metadata(event_store_object_id);
+            let event_store_object_address = event_store_object_address(rooch_address);
+            if (object::exists_object_with_type<EventStore>(event_store_object_address)) {
+                clean_user_metadata(event_store_object_address);
             };
         };
 
@@ -368,9 +372,9 @@ module nip_01_addr::event {
         vector::push_back<Event>(events_mut, event);
 
         // emit a move event nofitication
-        let event_store_object_id = event_store_object_id(rooch_address);
+        let event_store_object_address = event_store_object_address(rooch_address);
         let move_event = NostrEventSavedEvent {
-            id: event_store_object_id
+            id: event_store_object_address
         };
         event::emit(move_event);
 
@@ -394,54 +398,49 @@ module nip_01_addr::event {
         (id, pubkey, created_at, kind, tags, content, sig)
     }
 
-    fun event_store_object_id(rooch_address: address): ObjectID {
-        let event_store_object_id = object::account_named_object_id<EventStore>(rooch_address);
-        event_store_object_id
+    fun event_store_object_address(object: Object<EventStore>): address {
+        let object_address = object::object_address(&object);
+        object_address
     }
 
-    fun borrow_mut_event_store(rooch_address: address): &mut EventStore {
+    fun borrow_mut_event_store(caller: &signer, object: Object<EventStore>): &mut EventStore {
         // get the event store object id from the address
-        let event_store_object_id = event_store_object_id(rooch_address);
+        let event_store_object_address = event_store_object_address(object);
 
         // check the event store object id if it exists, if not, create an empty one
-        if (!object::exists_object_with_type<EventStore>(event_store_object_id)) {
-            return init_event_store(rooch_address)
+        if (!object::object_exists<EventStore>(event_store_object_address)) {
+            return init_event_store(caller)
         };
 
         // borrow the mutable event store from the event store object id
-        let event_store_mut = borrow_mut_event_store_from_object_id(event_store_object_id);
+        let event_store_mut = borrow_mut_event_store_from_object_address(event_store_object_address);
 
         event_store_mut
     }
 
-    fun borrow_event_store_from_object_id(event_store_object_id: ObjectID): &EventStore {
-        // borrow the event store object from the object store
-        let event_store_object = object::borrow_object<EventStore>(event_store_object_id);
-
-        // borrow the event store
-        let event_store = object::borrow<EventStore>(event_store_object);
+    fun borrow_event_store_from_object_address(event_store_object_address: address): &EventStore {
+        // borrow the event store from the object address
+        let event_store = borrow_global<EventStore>(event_store_object_address);
 
         event_store
     }
 
-    fun borrow_mut_event_store_from_object_id(event_store_object_id: ObjectID): &mut EventStore {
-        // borrow the mutable event store object from the object store
-        let event_store_object_mut = object::borrow_mut_object_extend<EventStore>(event_store_object_id);
-
-        // borrow the mutable event store
-        let event_store_mut = object::borrow_mut<EventStore>(event_store_object_mut);
+    fun borrow_mut_event_store_from_object_address(event_store_object_address: address): &mut EventStore {
+        // borrow the mutable event store from the object address
+        let event_store_mut = borrow_global_mut<EventStore>(event_store_object_address);
 
         event_store_mut
     }
 
-    fun init_event_store(rooch_address: address): &mut EventStore {
-        // create an event store object and transfer to the rooch address
+    fun init_event_store(caller: &signer): &mut EventStore {
+        // create an event store object and transfer to the object address
         let empty_event_store = empty_event_store();
-        let event_store_object = object::new_account_named_object<EventStore>(rooch_address, empty_event_store);
-        object::transfer_extend(event_store_object, rooch_address);
-        // retrieve the mutable event store from the rooch address
-        let event_store_object_id = event_store_object_id(rooch_address);
-        let event_store_mut = borrow_mut_event_store_from_object_id(event_store_object_id);
+        let event_store_constructor_ref = object::create_named_object(caller, EVENT_STORE_NAME);
+        let event_store_object_signer = object::generate_signer(&event_store_constructor_ref);
+        move_to(&event_store_object_signer, empty_event_store);
+        // retrieve the mutable event store from the object address
+        let event_store_object_address = event_store_constructor_ref.self;
+        let event_store_mut = borrow_mut_event_store_from_object_address(event_store_object_address);
 
         event_store_mut
     }
