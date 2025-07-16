@@ -16,18 +16,3 @@ nip_01_addr = "0x111"
 git = "https://github.com/aptos-labs/aptos-framework.git"
 rev = "mainnet"
 subdir = "aptos-framework"
-
-[dev-dependencies.MoveStdlib]
-git = "https://github.com/rooch-network/rooch.git"
-rev = "main"
-subdir = "frameworks/move-stdlib"
-
-[dev-dependencies.MoveosStdlib]
-git = "https://github.com/rooch-network/rooch.git"
-rev = "main"
-subdir = "frameworks/moveos-stdlib"
-
-[dev-dependencies.RoochFramework]
-git = "https://github.com/rooch-network/rooch.git"
-rev = "main"
-subdir = "frameworks/rooch-framework"
