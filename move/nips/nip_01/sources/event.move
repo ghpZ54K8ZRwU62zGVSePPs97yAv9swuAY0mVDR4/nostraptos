@@ -17,14 +17,13 @@ module nip_01_addr::event {
     use std::signer;
     use std::hash;
     use aptos_framework::object::{Self, Object};
-    // TODO: hex
-    use moveos_std::hex;
-    use moveos_std::timestamp;
-    use moveos_std::event;
-    use moveos_std::json;
-    use moveos_std::string_utils;
-    use rooch_framework::ecdsa_k1;
-    use nip_01::inner;
+    use moveos_std::hex; // TODO: hex
+    use aptos_framework::timestamp;
+    use aptos_framework::event;
+    use moveos_std::json; // TODO: json
+    use aptos_std::string_utils;
+    use rooch_framework::ecdsa_k1; // TODO: resolve dependency issues of move_std in rooch_framework
+    use nip_01_addr::inner;
 
     // Object names
     const EVENT_STORE_NAME: vector<u8> = b"EventStore";
@@ -95,8 +94,8 @@ module nip_01_addr::event {
         let coma = string::utf8(b",");
 
         // version 0, as described in NIP-01
-        let version = 0;
-        let version_str = string_utils::to_string_u8(version);
+        let version = 0u8;
+        let version_str = string_utils::to_string(version);
         string::append(&mut serialized, left_sb);
         string::append(&mut serialized, version_str);
         string::append(&mut serialized, coma);
@@ -109,12 +108,12 @@ module nip_01_addr::event {
         string::append(&mut serialized, coma);
 
         // created_at
-        let created_at_str = string_utils::to_string_u64(created_at);
+        let created_at_str = string_utils::to_string(created_at);
         string::append(&mut serialized, created_at_str);
         string::append(&mut serialized, coma);
 
         // kind
-        let kind_str = string_utils::to_string_u16(kind);
+        let kind_str = string_utils::to_string(kind);
         string::append(&mut serialized, kind_str);
         string::append(&mut serialized, coma);
 
