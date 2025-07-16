@@ -17,12 +17,12 @@ module nip_01_addr::event {
     use std::signer;
     use std::hash;
     use aptos_framework::object::{Self, Object};
-    use moveos_std::hex; // TODO: hex
+    use nip_01_addr::hex;
     use aptos_framework::timestamp;
     use aptos_framework::event;
-    use moveos_std::json; // TODO: json
+    use nip_01_addr::json;
     use aptos_std::string_utils;
-    use rooch_framework::ecdsa_k1; // TODO: resolve dependency issues of move_std in rooch_framework
+    use nip_01_addr::ecdsa_k1;
     use nip_01_addr::inner;
 
     // Object names
@@ -41,13 +41,11 @@ module nip_01_addr::event {
     const ErrorSigAlreadyExists: u64 = 1006;
     const ErrorInvalidUserMetadata: u64 = 1007;
 
-    #[data_struct]
     /// EventStore
     struct EventStore has key, copy, drop {
         events: vector<Event>
     }
 
-    #[data_struct]
     /// Event
     struct Event has key, store, copy, drop {
         id: vector<u8>, // 32-bytes lowercase hex-encoded sha256 of the serialized event data
@@ -59,25 +57,21 @@ module nip_01_addr::event {
         sig: Option<vector<u8>> // 64-bytes lowercase hex of the signature of the sha256 hash of the serialized event data, which is the same as the "id" field
     }
 
-    #[data_struct]
     /// Event create notification for Move events
-    struct NostrEventCreatedEvent has copy, drop {
-        id: ObjectID
+    struct NostrEventCreatedEvent has copy, store, drop {
+        object_address: address
     }
 
-    #[data_struct]
     /// Event update notification for Move events
-    struct NostrEventUpdatedEvent has copy, drop {
-        id: ObjectID
+    struct NostrEventUpdatedEvent has copy, store, drop {
+        object_address: address
     }
 
-    #[data_struct]
     /// Event save notification for Move events
-    struct NostrEventSavedEvent has copy, drop {
-        id: ObjectID
+    struct NostrEventSavedEvent has copy, store, drop {
+        object_address: address
     }
 
-    #[data_struct]
     /// UserMetadata field as stringified JSON object, when the Event kind is equal to 0
     struct UserMetadata has copy, drop {
         name: String,
@@ -95,7 +89,7 @@ module nip_01_addr::event {
 
         // version 0, as described in NIP-01
         let version = 0u8;
-        let version_str = string_utils::to_string(version);
+        let version_str = string_utils::to_string(&version);
         string::append(&mut serialized, left_sb);
         string::append(&mut serialized, version_str);
         string::append(&mut serialized, coma);
@@ -108,12 +102,12 @@ module nip_01_addr::event {
         string::append(&mut serialized, coma);
 
         // created_at
-        let created_at_str = string_utils::to_string(created_at);
+        let created_at_str = string_utils::to_string(&created_at);
         string::append(&mut serialized, created_at_str);
         string::append(&mut serialized, coma);
 
         // kind
-        let kind_str = string_utils::to_string(kind);
+        let kind_str = string_utils::to_string(&kind);
         string::append(&mut serialized, kind_str);
         string::append(&mut serialized, coma);
 
@@ -129,12 +123,12 @@ module nip_01_addr::event {
         string::append(&mut serialized, right_sb);
 
         // get the serialized string bytes
-        let serialized_bytes = string::into_bytes(serialized);
+        let serialized_bytes = string::bytes(&serialized);
 
         // check UTF-8 encoding
-        assert!(string::internal_check_utf8(&serialized_bytes), ErrorUtf8Encoding);
+        assert!(string::internal_check_utf8(serialized_bytes), ErrorUtf8Encoding);
 
-        serialized_bytes
+        *serialized_bytes
     }
 
     /// Check signature with public key, id and signature for schnorr
@@ -167,8 +161,9 @@ module nip_01_addr::event {
 
     // Clean the old user metadata when there is a new one from event store object id
     fun clean_user_metadata<EventStore>(event_store_object: Object<EventStore>) {
+        let event_store_object_address = event_store_object_address(event_store_object);
         // borrow event store from the event store object id
-        let event_store = borrow_event_store_from_object_id(event_store_object_address);
+        let event_store = borrow_event_store_from_object_address(event_store_object_address);
         // borrow inner events
         let events = borrow_events(event_store);
         // find the index of the user metadata event
@@ -212,10 +207,10 @@ module nip_01_addr::event {
         let id = create_event_id(x_only_public_key, created_at, kind, tags, content);
 
         // get the hex decoded public key bytes
-        let pubkey = hex::decode(&string::into_bytes(x_only_public_key));
+        let pubkey = hex::decode(*string::bytes(&x_only_public_key));
 
-        // derive a rooch address
-        let rooch_address = inner::derive_rooch_address(pubkey);
+        // derive a aptos address
+        let aptos_address = inner::derive_aptos_address(pubkey);
 
         // init an empty signature
         let sig = option::none<vector<u8>>();
@@ -225,7 +220,7 @@ module nip_01_addr::event {
             check_user_metadata(content);
             // clear past user metadata events from the user with the same rooch address from the public key
             let event_store_object_address = event_store_object_address(rooch_address);
-            if (object::exists_object_with_type<EventStore>(event_store_object_address)) {
+            if (object::object_exists<EventStore>(event_store_object_address)) {
                 clean_user_metadata(event_store_object_address);
             };
         };
@@ -250,7 +245,7 @@ module nip_01_addr::event {
         // emit a move event nofitication
         let event_store_object_address = event_store_object_address(rooch_address);
         let move_event = NostrEventCreatedEvent {
-            id: event_store_object_address
+            object_address: event_store_object_address
         };
         event::emit(move_event);
 
@@ -273,7 +268,7 @@ module nip_01_addr::event {
         let event_store_object_address = event_store_object_address(rooch_address);
 
         // check the event store object id if it exists
-        assert!(object::exists_object_with_type<EventStore>(event_store_object_address), ErrorEventStoreNotExist);
+        assert!(object::object_exists<EventStore>(event_store_object_address), ErrorEventStoreNotExist);
 
         // borrow mutable event store from the event store object id
         let event_store_mut = borrow_mut_event_store_from_object_address(event_store_object_address);
@@ -294,7 +289,7 @@ module nip_01_addr::event {
         assert!(option::is_none(&sig), ErrorSigAlreadyExists);
 
         // decode signature with hex
-        let update_sig = hex::decode(&string::into_bytes(signature));
+        let update_sig = hex::decode(*string::bytes(&signature));
 
         // check the signature
         check_signature(id, pubkey, update_sig);
@@ -304,7 +299,7 @@ module nip_01_addr::event {
 
         // emit a move event nofitication
         let move_event = NostrEventUpdatedEvent {
-            id: event_store_object_address
+            object_address: event_store_object_address
         };
         event::emit(move_event);
 
@@ -329,16 +324,16 @@ module nip_01_addr::event {
         let id = create_event_id(x_only_public_key, created_at, kind, tags, content);
 
         // get the hex decoded public key bytes
-        let pubkey = hex::decode(&string::into_bytes(x_only_public_key));
+        let pubkey = hex::decode(*string::bytes(&x_only_public_key));
 
         // get the hex decoded signature bytes
-        let check_sig = hex::decode(&string::into_bytes(signature));
+        let check_sig = hex::decode(*string::bytes(&signature));
 
         // check the signature
         check_signature(id, pubkey, check_sig);
 
-        // derive a rooch address
-        let rooch_address = inner::derive_rooch_address(pubkey);
+        // derive a aptos address
+        let aptos_address = inner::derive_aptos_address(pubkey);
 
         // pass check sig as option to form sig option
         let sig = option::some<vector<u8>>(check_sig);
@@ -348,7 +343,7 @@ module nip_01_addr::event {
             check_user_metadata(content);
             // clear past user metadata events from the user with the same rooch address from the public key
             let event_store_object_address = event_store_object_address(rooch_address);
-            if (object::exists_object_with_type<EventStore>(event_store_object_address)) {
+            if (object::object_exists<EventStore>(event_store_object_address)) {
                 clean_user_metadata(event_store_object_address);
             };
         };
@@ -373,7 +368,7 @@ module nip_01_addr::event {
         // emit a move event nofitication
         let event_store_object_address = event_store_object_address(rooch_address);
         let move_event = NostrEventSavedEvent {
-            id: event_store_object_address
+            object_address: event_store_object_address
         };
         event::emit(move_event);
 

@@ -14,9 +14,10 @@ module nip_01_addr::inner {
     use std::vector;
     use std::string::{Self, String};
     use std::option::{Self, Option};
-    use moveos_std::bcs;
-    use moveos_std::string_utils;
-    use rooch_framework::bitcoin_address::{Self, BitcoinAddress};
+    use std::bcs;
+    use aptos_std::from_bcs;
+    use aptos_std::string_utils;
+    use nip_01_addr::bitcoin_address::{Self, BitcoinAddress}; // TODO: resolve dependency issues of move_std in rooch_framework
 
     // Name of the tag of the event
     const EVENT_TAG_KEY: vector<u8> = b"e";
@@ -39,7 +40,6 @@ module nip_01_addr::inner {
     const ErrorKindOutOfRange: u64 = 1002;
     const ErrorEmptyTagString: u64 = 1003;
 
-    #[data_struct]
     /// Tags
     struct Tags has copy, drop {
         // For referring to an event
@@ -52,7 +52,6 @@ module nip_01_addr::inner {
         strings_list: Option<StringsListTag>
     }
 
-    #[data_struct]
     /// EventTag with `e` key or name
     struct EventTag has copy, drop {
         // id as value
@@ -61,7 +60,6 @@ module nip_01_addr::inner {
         pubkey: Option<vector<u8>>
     }
 
-    #[data_struct]
     /// UserTag with `p` key or name
     struct UserTag has copy, drop {
         // pubkey as value
@@ -69,7 +67,6 @@ module nip_01_addr::inner {
         url: Option<String>
     }
 
-    #[data_struct]
     /// AddressableReplaceableTag with `a` key or name
     struct AddressableReplaceableTag has copy, drop {
         // kind:pubkey:d as value
@@ -79,7 +76,6 @@ module nip_01_addr::inner {
         url: Option<String>
     }
 
-    #[data_struct]
     /// StringsListTag with non-empty array value of strings
     struct StringsListTag has copy, drop {
         // the first and second elements of this string list are key or name and value
@@ -118,10 +114,10 @@ module nip_01_addr::inner {
     }
 
     /// derive a rooch address from a bitcoin taproot address from a x-only public key
-    public fun derive_rooch_address(x_only_public_key: vector<u8>): address {
+    public fun derive_aptos_address(x_only_public_key: vector<u8>): address {
         let bitcoin_taproot_address = derive_bitcoin_taproot_address(x_only_public_key);
         // derive a rooch address from the bitcoin taproot address
-        let rooch_address = bitcoin_address::to_rooch_address(&bitcoin_taproot_address);
+        let rooch_address = bitcoin_address::to_aptos_address(&bitcoin_taproot_address);
         rooch_address
     }
 
@@ -212,7 +208,8 @@ module nip_01_addr::inner {
                         let first_occur_colon_pos = string::index_of(tag_value, &colon_string());
                         // kind of the string
                         let kind = string::sub_string(tag_value, 0, first_occur_colon_pos);
-                        let kind_value = string_utils::parse_u16(&kind);
+                        let kind_bytes = string::bytes(&kind);
+                        let kind_value = from_bcs::to_u16(*kind_bytes);
                         assert!(kind_value <= KIND_UPPER_VALUE, ErrorKindOutOfRange);
                         // get the length of the string
                         let tag_value_len = string::length(tag_value);
@@ -333,7 +330,7 @@ module nip_01_addr::inner {
                 // init kind:pubkey:d string
                 let kind_pubkey_d_str = string::utf8(vector::empty<u8>());
                 // addressable replaceable kind
-                let kind = string_utils::to_string_u16(addressable_replaceable.kind);
+                let kind = string_utils::to_string(&addressable_replaceable.kind);
                 string::append(&mut kind_pubkey_d_str, kind);
                 string::append(&mut kind_pubkey_d_str, colon_string());
                 // addressable replaceable pubkey
