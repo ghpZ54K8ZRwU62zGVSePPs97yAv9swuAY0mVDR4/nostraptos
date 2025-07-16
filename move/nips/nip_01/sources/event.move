@@ -57,16 +57,19 @@ module nip_01_addr::event {
         sig: Option<vector<u8>> // 64-bytes lowercase hex of the signature of the sha256 hash of the serialized event data, which is the same as the "id" field
     }
 
+    #[event]
     /// Event create notification for Move events
     struct NostrEventCreatedEvent has copy, store, drop {
         object_address: address
     }
 
+    #[event]
     /// Event update notification for Move events
     struct NostrEventUpdatedEvent has copy, store, drop {
         object_address: address
     }
 
+    #[event]
     /// Event save notification for Move events
     struct NostrEventSavedEvent has copy, store, drop {
         object_address: address
@@ -160,7 +163,7 @@ module nip_01_addr::event {
     }
 
     // Clean the old user metadata when there is a new one from event store object id
-    fun clean_user_metadata<EventStore>(event_store_object: Object<EventStore>) {
+    fun clean_user_metadata(event_store_object: Object<EventStore>) {
         let event_store_object_address = event_store_object_address(event_store_object);
         // borrow event store from the event store object id
         let event_store = borrow_event_store_from_object_address(event_store_object_address);
@@ -221,6 +224,7 @@ module nip_01_addr::event {
             // clear past user metadata events from the user with the same rooch address from the public key
             let event_store_object_address = event_store_object_address(rooch_address);
             if (object::object_exists<EventStore>(event_store_object_address)) {
+                // TODO: borrow event store object to pass in clean_user_metadata function.
                 clean_user_metadata(event_store_object_address);
             };
         };
