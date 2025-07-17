@@ -22,13 +22,13 @@ module nip_01_addr::event {
     use aptos_framework::event;
     use aptos_std::string_utils;
     use aptos_std::ordered_map::{Self, OrderedMap};
-    use nip_01_addr::ecdsa_k1;
+    use aptos_std::ed25519;
     use nip_01_addr::inner;
 
     /// UserMetadata keys, when the event kind is equal to 0
-    const NAME_KEY_USER_METADATA: vector<u8> = b"name";
-    const ABOUT_KEY_USER_METADATA: vector<u8> = b"about";
-    const PICTURE_KEY_USER_METADATA: vector<u8> = b"picture";
+    const NAME_KEY_USER_METADATA: vector<u8> = b"\"name\"";
+    const ABOUT_KEY_USER_METADATA: vector<u8> = b"\"about\"";
+    const PICTURE_KEY_USER_METADATA: vector<u8> = b"\"picture\"";
 
     // Kind of the event
     const EVENT_KIND_USER_METADATA: u16 = 0;
@@ -133,36 +133,40 @@ module nip_01_addr::event {
 
     /// Check signature with public key, id and signature for schnorr
     fun check_signature(id: vector<u8>, x_only_public_key: vector<u8>, signature: vector<u8>) {
-        assert!(ecdsa_k1::verify(
-            &signature,
-            &x_only_public_key,
-            &id,
-            ecdsa_k1::sha256()
+        let unvalidated_pubkey = ed25519::new_unvalidated_public_key_from_bytes(x_only_public_key);
+        let sig = ed25519::new_signature_from_bytes(signature);
+        // TODO: verify should succeed
+        assert!(ed25519::signature_verify_strict(
+            &sig,
+            &unvalidated_pubkey,
+            id,
         ), ErrorSignatureValidationFailure);
     }
 
     fun create_ordered_map_from_content(content: String): OrderedMap<String, String> {
         let colon_mark = string::utf8(b":");
-        let quote_coma_mark = string::utf8(b"\",");
+        let quote_coma_marks = string::utf8(b"\",");
         let content_length = string::length(&content);
-        let start_pos = 0;
+        let start_pos = 1; // skip left {
         let colon_pos = string::index_of(&content, &colon_mark);
-        let quote_coma_mark_pos = string::index_of(&content, &quote_coma_mark);
+        let quote_coma_marks_pos = string::index_of(&content, &quote_coma_marks);
         let keys = vector::empty<String>();
         let values = vector::empty<String>();
         let sliced_string = content;
-        while (quote_coma_mark_pos <= content_length) {
+        while (quote_coma_marks_pos < content_length) {
             let key = string::sub_string(&sliced_string, start_pos, colon_pos);
             vector::push_back(&mut keys, key);
             // slice the string
             start_pos = colon_pos + 1;
-            let value = string::sub_string(&sliced_string, start_pos, quote_coma_mark_pos);
+            let value = string::sub_string(&sliced_string, start_pos, quote_coma_marks_pos);
             vector::push_back(&mut values, value);
-            start_pos = quote_coma_mark_pos + 1;
+            start_pos = quote_coma_marks_pos + 2; // 2 marks
             if (start_pos <= content_length) {
                 sliced_string = string::sub_string(&sliced_string, start_pos, content_length);
                 colon_pos = string::index_of(&sliced_string, &colon_mark);
-                quote_coma_mark_pos = string::index_of(&sliced_string, &quote_coma_mark);
+                quote_coma_marks_pos = string::index_of(&sliced_string, &quote_coma_marks);
+                content_length = string::length(&sliced_string);
+                start_pos = 0;
             };
         };
         let ordered_map_from = ordered_map::new_from(keys, values);
@@ -227,8 +231,8 @@ module nip_01_addr::event {
         // get the hex decoded public key bytes
         let pubkey = hex::decode(*string::bytes(&x_only_public_key));
 
-        // derive a aptos address
-        let aptos_address = inner::derive_aptos_address(pubkey);
+        // derive an aptos address
+        let aptos_address = inner::derive_aptos_address_from_x_only_pubkey(pubkey);
 
         // init an empty signature
         let sig = option::none<vector<u8>>();
@@ -331,7 +335,7 @@ module nip_01_addr::event {
     }
 
     /// Save an Event
-    public fun save_event(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String) acquires EventStore {
+    public fun save_event(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String): Event acquires EventStore {
         // check signature length
         assert!(string::length(&signature) == 128, ErrorMalformedSignature);
 
@@ -350,8 +354,8 @@ module nip_01_addr::event {
         // check the signature
         check_signature(id, pubkey, check_sig);
 
-        // derive a aptos address
-        let aptos_address = inner::derive_aptos_address(pubkey);
+        // derive an aptos address
+        let aptos_address = inner::derive_aptos_address_from_x_only_pubkey(pubkey);
 
         // pass check sig as option to form sig option
         let sig = option::some<vector<u8>>(check_sig);
@@ -395,11 +399,13 @@ module nip_01_addr::event {
             object_address: event_store_object_address
         };
         event::emit(move_event);
+
+        event
     }
 
     /// Entry function to save an Event
     public entry fun save_event_entry(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String) acquires EventStore {
-        save_event(x_only_public_key, created_at, kind, tags, content, signature);
+        let _event_saved = save_event(x_only_public_key, created_at, kind, tags, content, signature);
     }
 
     /// drop an event
@@ -475,5 +481,26 @@ module nip_01_addr::event {
 
     public fun events(event_store: &EventStore): vector<Event> {
         event_store.events
+    }
+
+    #[test]
+    fun test_create_ordered_map_from_content_success() {
+        let content = string::utf8(b"{\"name\":\"ZHANG, HENGMING\",\"about\":\"\",\"picture\":\"\",\"website\":\"\",}");
+        let map = create_ordered_map_from_content(content);
+        assert!(ordered_map::contains(&map, &string::utf8(NAME_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataName);
+        assert!(ordered_map::contains(&map, &string::utf8(ABOUT_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataAbout);
+        assert!(ordered_map::contains(&map, &string::utf8(PICTURE_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataPicture);
+    }
+
+    #[test]
+    fun test_save_event_success() acquires EventStore {
+        let x_only_public_key = string::utf8(b"cddcc4a1d4a94d627e7808f904d0477cf16ae9d4fafa1eb883ab7a498bdda777");
+        let created_at = 1744959972u64;
+        let kind = 0u16;
+        let tags = vector::empty<vector<String>>();
+        let content = string::utf8(b"{\"name\":\"ZHANG, HENGMING\",\"about\":\"\",\"picture\":\"\",\"website\":\"\",}");
+        let signature = string::utf8(b"6c2565ceabff153609aa9ccdeb13421a1181a54d0ca4fe10cd074b0c2da44c641c98992701c9a4d3e24391db3e358eff190510be46e73d0e517d5e5b13bb06fd");
+        let event_saved = save_event(x_only_public_key, created_at, kind, tags, content, signature);
+        std::debug::print(&event_saved);
     }
 }
