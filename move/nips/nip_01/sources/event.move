@@ -20,10 +20,15 @@ module nip_01_addr::event {
     use nip_01_addr::hex;
     use aptos_framework::timestamp;
     use aptos_framework::event;
-    use nip_01_addr::json;
     use aptos_std::string_utils;
+    use aptos_std::ordered_map::{Self, OrderedMap};
     use nip_01_addr::ecdsa_k1;
     use nip_01_addr::inner;
+
+    /// UserMetadata keys, when the event kind is equal to 0
+    const NAME_KEY_USER_METADATA: vector<u8> = b"name";
+    const ABOUT_KEY_USER_METADATA: vector<u8> = b"about";
+    const PICTURE_KEY_USER_METADATA: vector<u8> = b"picture";
 
     // Kind of the event
     const EVENT_KIND_USER_METADATA: u16 = 0;
@@ -36,7 +41,9 @@ module nip_01_addr::event {
     const ErrorMalformedSignature: u64 = 1004;
     const ErrorEventStoreNotExist: u64 = 1005;
     const ErrorSigAlreadyExists: u64 = 1006;
-    const ErrorInvalidUserMetadata: u64 = 1007;
+    const ErrorKeyNotFoundUserMetadataName: u64 = 1007;
+    const ErrorKeyNotFoundUserMetadataAbout: u64 = 1008;
+    const ErrorKeyNotFoundUserMetadataPicture: u64 = 1009;
 
     /// EventStore
     struct EventStore has key, copy, drop {
@@ -72,13 +79,6 @@ module nip_01_addr::event {
         object_address: address
     }
 
-    /// UserMetadata field as stringified JSON object, when the Event kind is equal to 0
-    struct UserMetadata has copy, drop {
-        name: String,
-        about: String,
-        picture: String
-    }
-
     /// Serialize to byte arrays, which could be sha256 hashed and hex-encoded with lowercase to 32 byte arrays
     fun serialize(pubkey: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String): vector<u8> {
         let serialized = string::utf8(b"");
@@ -112,7 +112,7 @@ module nip_01_addr::event {
         string::append(&mut serialized, coma);
 
         // tags
-        let tags_str = string::utf8(json::to_json(&tags));
+        let tags_str = string_utils::to_string(&tags);
         string::append(&mut serialized, tags_str);
         string::append(&mut serialized, coma);
 
@@ -141,22 +141,41 @@ module nip_01_addr::event {
         ), ErrorSignatureValidationFailure);
     }
 
-    /// Check the referenced user metadata from content with UserMetadata struct
-    fun check_user_metadata(content: String) {
-        // check the content integrity
-        let content_json = json::to_json<String>(&content);
-        // some bits are stripped for verification
-        let dq = inner::doublequote();
-        vector::remove_value(&mut content_json, &dq);
-        vector::reverse(&mut content_json);
-        vector::remove_value(&mut content_json, &dq);
-        vector::reverse(&mut content_json);
-        let bs = inner::backslash();
-        while (vector::contains(&content_json, &bs)) {
-            vector::remove_value(&mut content_json, &bs);
+    fun create_ordered_map_from_content(content: String): OrderedMap<String, String> {
+        let colon_mark = string::utf8(b":");
+        let quote_coma_mark = string::utf8(b"\",");
+        let content_length = string::length(&content);
+        let start_pos = 0;
+        let colon_pos = string::index_of(&content, &colon_mark);
+        let quote_coma_mark_pos = string::index_of(&content, &quote_coma_mark);
+        let keys = vector::empty<String>();
+        let values = vector::empty<String>();
+        let sliced_string = content;
+        while (quote_coma_mark_pos <= content_length) {
+            let key = string::sub_string(&sliced_string, start_pos, colon_pos);
+            vector::push_back(&mut keys, key);
+            // slice the string
+            start_pos = colon_pos + 1;
+            let value = string::sub_string(&sliced_string, start_pos, quote_coma_mark_pos);
+            vector::push_back(&mut values, value);
+            start_pos = quote_coma_mark_pos + 1;
+            if (start_pos <= content_length) {
+                sliced_string = string::sub_string(&sliced_string, start_pos, content_length);
+                colon_pos = string::index_of(&sliced_string, &colon_mark);
+                quote_coma_mark_pos = string::index_of(&sliced_string, &quote_coma_mark);
+            };
         };
-        let user_metadata_option = json::from_json_option<UserMetadata>(content_json);
-        assert!(option::is_some(&user_metadata_option), ErrorInvalidUserMetadata);
+        let ordered_map_from = ordered_map::new_from(keys, values);
+        ordered_map_from
+    }
+
+    /// Check the referenced user metadata from content
+    fun check_user_metadata(content: String) {
+        // check the content keys align with UserMetadata keys
+        let ordered_map_from_content = create_ordered_map_from_content(content);
+        assert!(ordered_map::contains(&ordered_map_from_content, &string::utf8(NAME_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataName);
+        assert!(ordered_map::contains(&ordered_map_from_content, &string::utf8(ABOUT_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataAbout);
+        assert!(ordered_map::contains(&ordered_map_from_content, &string::utf8(PICTURE_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataPicture);
     }
 
     // Clean the old user metadata when there is a new one from event store object address
