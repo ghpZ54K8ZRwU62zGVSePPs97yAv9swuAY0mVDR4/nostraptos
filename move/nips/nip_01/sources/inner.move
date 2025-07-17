@@ -17,7 +17,7 @@ module nip_01_addr::inner {
     use std::bcs;
     use aptos_std::from_bcs;
     use aptos_std::string_utils;
-    use nip_01_addr::bitcoin_address::{Self, BitcoinAddress}; // TODO: resolve dependency issues of move_std in rooch_framework
+    use aptos_std::single_key;
 
     // Name of the tag of the event
     const EVENT_TAG_KEY: vector<u8> = b"e";
@@ -106,19 +106,12 @@ module nip_01_addr::inner {
         BACKSLASH
     }
 
-    /// derive a bitcoin taproot address from a x-only public key
-    public fun derive_bitcoin_taproot_address(x_only_public_key: vector<u8>): BitcoinAddress {
-        // derive a bitcoin taproot address from the x only public key
-        let bitcoin_taproot_address = bitcoin_address::derive_bitcoin_taproot_address_from_pubkey(&x_only_public_key);
-        bitcoin_taproot_address
-    }
-
-    /// derive a rooch address from a bitcoin taproot address from a x-only public key
-    public fun derive_aptos_address(x_only_public_key: vector<u8>): address {
-        let bitcoin_taproot_address = derive_bitcoin_taproot_address(x_only_public_key);
-        // derive a rooch address from the bitcoin taproot address
-        let rooch_address = bitcoin_address::to_aptos_address(&bitcoin_taproot_address);
-        rooch_address
+    /// derive an aptos address from an x-only public key
+    public fun derive_aptos_address_from_x_only_pubkey(x_only_public_key: vector<u8>): address {
+        let any_pubkey = single_key::new_public_key_from_bytes(x_only_public_key);
+        let auth_key = single_key::to_authentication_key(&any_pubkey);
+        let aptos_address = from_bcs::to_address(auth_key);
+        aptos_address
     }
 
     /// build string tags to inner struct tags
