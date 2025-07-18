@@ -16,7 +16,7 @@ One may obtain a copy of the Apache License, Version 2.0 from this URL:
 
 https://github.com/rooch-network/rooch/blob/main/LICENSE.
 
-One may obtain a copy of the version 3 (or any later version) of the GNU Affero General Public License from the root of this project:
+One may obtain a copy of the version 3 (or any later version) of the GNU Affero General Public License via the LICENSE file of this project:
 
 [LICENSE](../../LICENSE).
 
@@ -30,7 +30,7 @@ When deriviate works from this repository, add below licensings of the SPDX lice
 // SPDX-License-Identifier: Apache-2.0
 ```
 
-, or:
+if using libraries from Rooch Network, or:
 
 ```move
 // Copyright (C) 2025  ZHANG, HENGMING
@@ -39,5 +39,7 @@ When deriviate works from this repository, add below licensings of the SPDX lice
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 ```
+
+if using libraries from Mysten Labs.
 
 Above equals to `(AGPL-3.0-or-later AND Apache-2.0)` syntax of a SPDX-License-Identifier.

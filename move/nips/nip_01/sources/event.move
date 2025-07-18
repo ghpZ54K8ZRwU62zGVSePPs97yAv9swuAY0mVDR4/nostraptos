@@ -158,7 +158,7 @@ module nip_01_addr::event {
     fun check_signature(id: vector<u8>, x_only_public_key: vector<u8>, signature: vector<u8>) {
         let unvalidated_pubkey = ed25519::new_unvalidated_public_key_from_bytes(x_only_public_key);
         let sig = ed25519::new_signature_from_bytes(signature);
-        // TODO: verify with schnorr signature
+        // TODO: verify with schnorr signature scheme
         assert!(!ed25519::signature_verify_strict(
             &sig,
             &unvalidated_pubkey,

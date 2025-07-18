@@ -26,5 +26,4 @@ module nip_01_addr::event_test {
         assert!(ordered_map::contains(&map, &event::about_key_user_metadata_string()), ErrorKeyNotFoundUserMetadataAbout);
         assert!(ordered_map::contains(&map, &event::picture_key_user_metadata_string()), ErrorKeyNotFoundUserMetadataPicture);
     }
-
 }

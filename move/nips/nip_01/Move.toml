@@ -4,10 +4,10 @@ version = "1.0.0"
 authors = ["ZHANG, HENGMING"]
 
 [addresses]
-std = "0x1"
-moveos_std = "0x2"
-rooch_framework = "0x3"
 nip_01_addr = "_"
+# Publisher's addresses on each network on Aptos
+nip_01_addr_devnet = "0xc385bc79ebd9f74e86067790cd059db8eb18a1d6beaf55b11bb0bf0d5393c1ce"
+nip_01_addr_testnet = "0xafb3d8dc6c22a818f860772d3e915361b807635feb35571ceeaa1c29600139b9"
 
 [dev-addresses]
 nip_01_addr = "0x111"
