@@ -30,5 +30,4 @@ module nip_01_addr::xonlypubkey_test {
         let aptos_address = xonlypubkey::derive_aptos_address_from_x_only_pubkey(x_only_public_key);
         assert!(aptos_address == expected_address, ErrorWrongAptosAddress);
     }
-
 }
