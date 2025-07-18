@@ -17,7 +17,6 @@ module nip_01_addr::inner {
     use std::bcs;
     use aptos_std::from_bcs;
     use aptos_std::string_utils;
-    use aptos_std::single_key;
 
     // Name of the tag of the event
     const EVENT_TAG_KEY: vector<u8> = b"e";
@@ -104,14 +103,6 @@ module nip_01_addr::inner {
 
     public fun backslash(): u8 {
         BACKSLASH
-    }
-
-    /// derive an aptos address from an x-only public key
-    public fun derive_aptos_address_from_x_only_pubkey(x_only_public_key: vector<u8>): address {
-        let any_pubkey = single_key::new_public_key_from_bytes(x_only_public_key);
-        let auth_key = single_key::to_authentication_key(&any_pubkey);
-        let aptos_address = from_bcs::to_address(auth_key);
-        aptos_address
     }
 
     /// build string tags to inner struct tags
