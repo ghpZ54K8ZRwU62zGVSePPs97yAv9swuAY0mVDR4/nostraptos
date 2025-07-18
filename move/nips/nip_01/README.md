@@ -30,4 +30,14 @@ When deriviate works from this repository, add below licensings of the SPDX lice
 // SPDX-License-Identifier: Apache-2.0
 ```
 
+, or:
+
+```move
+// Copyright (C) 2025  ZHANG, HENGMING
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Copyright (c) Mysten Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+```
+
 Above equals to `(AGPL-3.0-or-later AND Apache-2.0)` syntax of a SPDX-License-Identifier.

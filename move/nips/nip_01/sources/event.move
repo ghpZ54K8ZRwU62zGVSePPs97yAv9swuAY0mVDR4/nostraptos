@@ -19,7 +19,7 @@ module nip_01_addr::event {
     use aptos_std::string_utils;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_std::ed25519;
-    use aptos_framework::object::{Self, Object, ConstructorRef};
+    use aptos_framework::object::{Self, ConstructorRef};
     use aptos_framework::timestamp;
     use aptos_framework::event;
     use nip_01_addr::hex;
@@ -44,6 +44,29 @@ module nip_01_addr::event {
     const ErrorKeyNotFoundUserMetadataName: u64 = 1007;
     const ErrorKeyNotFoundUserMetadataAbout: u64 = 1008;
     const ErrorKeyNotFoundUserMetadataPicture: u64 = 1009;
+    const ErrorNotCurrentOwner: u64 = 1010;
+    const ErrorNoDirectIndirectOwnership: u64 = 1011;
+    const ErrorNotObject: u64 = 1012;
+    const ErrorObjectDoesNotExist: u64 = 1013;
+    const ErrorInvalidId: u64 = 1014;
+    const ErrorInvalidPublicKey: u64 = 1015;
+    const ErrorInvalidCreatedAt: u64 = 1016;
+    const ErrorInvalidKind: u64 = 1017;
+    const ErrorInvalidTags: u64 = 1018;
+    const ErrorInvalidContent: u64 = 1019;
+    const ErrorInvalidSignature: u64 = 1020;
+
+    public fun name_key_user_metadata_string(): String {
+        string::utf8(NAME_KEY_USER_METADATA)
+    }
+
+    public fun about_key_user_metadata_string(): String {
+        string::utf8(ABOUT_KEY_USER_METADATA)
+    }
+
+    public fun picture_key_user_metadata_string(): String {
+        string::utf8(PICTURE_KEY_USER_METADATA)
+    }
 
     /// EventStore
     struct EventStore has key, copy, drop {
@@ -143,7 +166,7 @@ module nip_01_addr::event {
         ), ErrorSignatureValidationFailure);
     }
 
-    fun create_ordered_map_from_content(content: String): OrderedMap<String, String> {
+    public fun create_ordered_map_from_content(content: String): OrderedMap<String, String> {
         let colon_mark = string::utf8(b":");
         let quote_coma_marks = string::utf8(b"\",");
         let content_length = string::length(&content);
@@ -206,7 +229,7 @@ module nip_01_addr::event {
         };
     }
 
-    /// Create an Event id
+    /// Create an Event id of Nostr
     fun create_event_id(pubkey: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String): vector<u8> {
         // serialize input to bytes for an Event id
         let serialized = serialize(pubkey, created_at, kind, tags, content);
@@ -221,7 +244,7 @@ module nip_01_addr::event {
     }
 
     /// Create an Event for signing
-    public fun create_event(x_only_public_key: String, kind: u16, tags: vector<vector<String>>, content: String) acquires EventStore {
+    public fun create_event(x_only_public_key: String, kind: u16, tags: vector<vector<String>>, content: String): address acquires EventStore {
         // get now timestamp by seconds
         let created_at = timestamp::now_seconds();
 
@@ -237,8 +260,8 @@ module nip_01_addr::event {
         // init an empty signature
         let sig = option::none<vector<u8>>();
 
-        // get event store object address
-        let event_store_constructor_ref = object::create_object(aptos_address);
+        // create event store object address
+        let event_store_constructor_ref = object::create_sticky_object(aptos_address);
         let event_store_object_address = object::address_from_constructor_ref(&event_store_constructor_ref);
 
         // handle a range of different kinds of an Event
@@ -270,27 +293,33 @@ module nip_01_addr::event {
         let events_mut = borrow_mut_events(event_store_mut);
         // get the event for signing pushed to the event store's events
         vector::push_back<Event>(events_mut, event);
+        // create event object address
+        let event_constructor_ref = object::create_sticky_object(event_store_object_address);
+        let event_object_address = object::address_from_constructor_ref(&event_constructor_ref);
+        add_event(event_constructor_ref, event);
 
         // emit a move event nofitication
         let move_event = NostrEventCreatedEvent {
-            object_address: event_store_object_address
+            object_address: event_object_address
         };
         event::emit(move_event);
+
+        event_object_address
     }
 
     /// Entry function to create an Event for signing
     public entry fun create_event_entry(x_only_public_key: String, kind: u16, tags: vector<vector<String>>, content: String) acquires EventStore {
-        create_event(x_only_public_key, kind, tags, content);
+        let _event_object_address = create_event(x_only_public_key, kind, tags, content);
     }
 
     /// Update a signature under the sig field of an Event
-    public fun update_event_signature(caller: &signer, signature: String) acquires EventStore {
+    public fun update_event_signature(caller: &signer, signature: String): address acquires EventStore {
         // get the caller's address
         let caller_address = signer::address_of(caller);
 
         // get event store object address
-        let event_store_constructor_ref = object::create_object(caller_address);
-        let event_store_object_address = object::address_from_constructor_ref(&event_store_constructor_ref);
+        let event_store_object = object::address_to_object<EventStore>(caller_address);
+        let event_store_object_address = object::object_address<EventStore>(&event_store_object);
 
         // check the event store object id if it exists
         assert!(object::object_exists<EventStore>(event_store_object_address), ErrorEventStoreNotExist);
@@ -322,20 +351,26 @@ module nip_01_addr::event {
         // update the signature of the sig field of the event
         option::fill<vector<u8>>(&mut event_mut.sig, update_sig);
 
+        // get event object address
+        let event_object = object::address_to_object<Event>(event_store_object_address);
+        let event_object_address = object::object_address<Event>(&event_object);
+
         // emit a move event nofitication
         let move_event = NostrEventUpdatedEvent {
-            object_address: event_store_object_address
+            object_address: event_object_address
         };
         event::emit(move_event);
+
+        event_object_address
     }
 
     /// Entry function to update a signature under sig field of an Event
     public entry fun update_event_signature_entry(signer: &signer, signature: String) acquires EventStore {
-        update_event_signature(signer, signature);
+        let _event_object_address = update_event_signature(signer, signature);
     }
 
     /// Save an Event
-    public fun save_event(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String) acquires EventStore {
+    public fun save_event(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String): (address, address) acquires EventStore {
         // check signature length
         assert!(string::length(&signature) == 128, ErrorMalformedSignature);
 
@@ -360,8 +395,8 @@ module nip_01_addr::event {
         // pass check sig as option to form sig option
         let sig = option::some<vector<u8>>(check_sig);
 
-        // get event store object address
-        let event_store_constructor_ref = object::create_object(aptos_address);
+        // create event store object address
+        let event_store_constructor_ref = object::create_sticky_object(aptos_address);
         let event_store_object_address = object::address_from_constructor_ref(&event_store_constructor_ref);
 
         // handle a range of different kinds of an Event
@@ -393,17 +428,23 @@ module nip_01_addr::event {
         let events_mut = borrow_mut_events(event_store_mut);
         // get the event pushed to the event store's events
         vector::push_back<Event>(events_mut, event);
+        // create event object address
+        let event_constructor_ref = object::create_sticky_object(event_store_object_address);
+        let event_object_address = object::address_from_constructor_ref(&event_constructor_ref);
+        add_event(event_constructor_ref, event);
 
         // emit a move event nofitication
         let move_event = NostrEventSavedEvent {
-            object_address: event_store_object_address
+            object_address: event_object_address
         };
         event::emit(move_event);
+
+        (event_store_object_address, event_object_address)
     }
 
     /// Entry function to save an Event
     public entry fun save_event_entry(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String) acquires EventStore {
-        save_event(x_only_public_key, created_at, kind, tags, content, signature);
+        let (_event_store_object_address, _event_object_address) = save_event(x_only_public_key, created_at, kind, tags, content, signature);
     }
 
     /// drop an event
@@ -416,16 +457,16 @@ module nip_01_addr::event {
         (id, pubkey, created_at, kind, tags, content, sig)
     }
 
-    fun event_store_object_address(object: Object<EventStore>): address {
-        let object_address = object::object_address(&object);
-        object_address
-    }
-
     fun init_event_store(event_store_constructor_ref: ConstructorRef) {
         // create an event store object and transfer to the object address
         let empty_event_store = empty_event_store();
         let event_store_object_signer = object::generate_signer(&event_store_constructor_ref);
         move_to(&event_store_object_signer, empty_event_store);
+    }
+
+    fun add_event(event_constructor_ref: ConstructorRef, event: Event) {
+        let event_object_signer = object::generate_signer(&event_constructor_ref);
+        move_to(&event_object_signer, event);
     }
 
     fun empty_event_store(): EventStore {
@@ -481,23 +522,41 @@ module nip_01_addr::event {
     }
 
     #[test]
-    fun test_create_ordered_map_from_content_success() {
-        let content = string::utf8(b"{\"name\":\"ZHANG, HENGMING\",\"about\":\"\",\"picture\":\"\",\"website\":\"\",}");
-        let map = create_ordered_map_from_content(content);
-        assert!(ordered_map::contains(&map, &string::utf8(NAME_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataName);
-        assert!(ordered_map::contains(&map, &string::utf8(ABOUT_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataAbout);
-        assert!(ordered_map::contains(&map, &string::utf8(PICTURE_KEY_USER_METADATA)), ErrorKeyNotFoundUserMetadataPicture);
-    }
-
-    #[test]
-    fun test_save_event_success() acquires EventStore {
-        let x_only_public_key = string::utf8(b"cddcc4a1d4a94d627e7808f904d0477cf16ae9d4fafa1eb883ab7a498bdda777");
+    fun test_save_event_success() acquires EventStore, Event {
+        let x_only_public_key = b"cddcc4a1d4a94d627e7808f904d0477cf16ae9d4fafa1eb883ab7a498bdda777";
         let created_at = 1744959972u64;
         let kind = 0u16;
         let tags = vector::empty<vector<String>>();
-        let content = string::utf8(b"{\"name\":\"ZHANG, HENGMING\",\"about\":\"\",\"picture\":\"\",\"website\":\"\",}");
-        let signature = string::utf8(b"6c2565ceabff153609aa9ccdeb13421a1181a54d0ca4fe10cd074b0c2da44c641c98992701c9a4d3e24391db3e358eff190510be46e73d0e517d5e5b13bb06fd");
-        save_event(x_only_public_key, created_at, kind, tags, content, signature);
-        // TODO: query aptos object to compare
+        let content = b"{\"name\":\"ZHANG, HENGMING\",\"about\":\"\",\"picture\":\"\",\"website\":\"\",}";
+        let id = create_event_id(string::utf8(x_only_public_key), created_at, kind, tags, string::utf8(content));
+        let signature = b"6c2565ceabff153609aa9ccdeb13421a1181a54d0ca4fe10cd074b0c2da44c641c98992701c9a4d3e24391db3e358eff190510be46e73d0e517d5e5b13bb06fd";
+        let (event_store_object_address, event_object_address) = save_event(string::utf8(x_only_public_key), created_at, kind, tags, string::utf8(content), string::utf8(signature));
+
+        let aptos_address = xonlypubkey::derive_aptos_address_from_x_only_pubkey(hex::decode(x_only_public_key));
+
+        // event store
+        let event_store_object = object::address_to_object<EventStore>(event_store_object_address);
+        assert!(object::is_owner(event_store_object, aptos_address), ErrorNotCurrentOwner);
+        assert!(object::owns(event_store_object, aptos_address), ErrorNoDirectIndirectOwnership);
+        let event_store_object_address = object::object_address<EventStore>(&event_store_object);
+        assert!(object::is_object(event_store_object_address), ErrorNotObject);
+        assert!(object::object_exists<EventStore>(event_store_object_address), ErrorObjectDoesNotExist);
+
+        // event
+        let event_object = object::address_to_object<Event>(event_object_address);
+        assert!(object::is_owner(event_object, event_store_object_address), ErrorNotCurrentOwner);
+        assert!(object::owns(event_object, event_store_object_address), ErrorNoDirectIndirectOwnership);
+        let event_object_address = object::object_address<Event>(&event_object);
+        assert!(object::is_object(event_object_address), ErrorNotObject);
+        assert!(object::object_exists<Event>(event_object_address), ErrorObjectDoesNotExist);
+
+        let event = borrow_global<Event>(event_object_address);
+        assert!(event.id == id, ErrorInvalidId);
+        assert!(event.pubkey == hex::decode(x_only_public_key), ErrorInvalidPublicKey);
+        assert!(event.created_at == created_at, ErrorInvalidCreatedAt);
+        assert!(event.kind == kind, ErrorInvalidKind);
+        assert!(event.tags == tags, ErrorInvalidTags);
+        assert!(event.content == string::utf8(content), ErrorInvalidContent);
+        assert!(event.sig == option::some(hex::decode(signature)), ErrorInvalidSignature);
     }
 }
