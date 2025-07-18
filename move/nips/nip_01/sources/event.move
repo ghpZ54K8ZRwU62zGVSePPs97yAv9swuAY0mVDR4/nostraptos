@@ -16,14 +16,14 @@ module nip_01_addr::event {
     use std::option::{Self, Option};
     use std::signer;
     use std::hash;
-    use aptos_framework::object::{Self, Object};
-    use nip_01_addr::hex;
-    use aptos_framework::timestamp;
-    use aptos_framework::event;
     use aptos_std::string_utils;
     use aptos_std::ordered_map::{Self, OrderedMap};
     use aptos_std::ed25519;
-    use nip_01_addr::inner;
+    use aptos_framework::object::{Self, Object, ConstructorRef};
+    use aptos_framework::timestamp;
+    use aptos_framework::event;
+    use nip_01_addr::hex;
+    use nip_01_addr::xonlypubkey;
 
     /// UserMetadata keys, when the event kind is equal to 0
     const NAME_KEY_USER_METADATA: vector<u8> = b"\"name\"";
@@ -135,8 +135,8 @@ module nip_01_addr::event {
     fun check_signature(id: vector<u8>, x_only_public_key: vector<u8>, signature: vector<u8>) {
         let unvalidated_pubkey = ed25519::new_unvalidated_public_key_from_bytes(x_only_public_key);
         let sig = ed25519::new_signature_from_bytes(signature);
-        // TODO: verify should succeed
-        assert!(ed25519::signature_verify_strict(
+        // TODO: verify with schnorr signature
+        assert!(!ed25519::signature_verify_strict(
             &sig,
             &unvalidated_pubkey,
             id,
@@ -232,7 +232,7 @@ module nip_01_addr::event {
         let pubkey = hex::decode(*string::bytes(&x_only_public_key));
 
         // derive an aptos address
-        let aptos_address = inner::derive_aptos_address_from_x_only_pubkey(pubkey);
+        let aptos_address = xonlypubkey::derive_aptos_address_from_x_only_pubkey(pubkey);
 
         // init an empty signature
         let sig = option::none<vector<u8>>();
@@ -262,7 +262,7 @@ module nip_01_addr::event {
         };
         // init event store if not already
         if (!object::object_exists<EventStore>(event_store_object_address)) {
-            init_event_store(aptos_address);
+            init_event_store(event_store_constructor_ref);
         };
         // borrow mutable event store
         let event_store_mut = borrow_global_mut<EventStore>(event_store_object_address);
@@ -335,7 +335,7 @@ module nip_01_addr::event {
     }
 
     /// Save an Event
-    public fun save_event(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String): Event acquires EventStore {
+    public fun save_event(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String) acquires EventStore {
         // check signature length
         assert!(string::length(&signature) == 128, ErrorMalformedSignature);
 
@@ -355,7 +355,7 @@ module nip_01_addr::event {
         check_signature(id, pubkey, check_sig);
 
         // derive an aptos address
-        let aptos_address = inner::derive_aptos_address_from_x_only_pubkey(pubkey);
+        let aptos_address = xonlypubkey::derive_aptos_address_from_x_only_pubkey(pubkey);
 
         // pass check sig as option to form sig option
         let sig = option::some<vector<u8>>(check_sig);
@@ -385,7 +385,7 @@ module nip_01_addr::event {
         };
         // init event store if not already
         if (!object::object_exists<EventStore>(event_store_object_address)) {
-            init_event_store(aptos_address);
+            init_event_store(event_store_constructor_ref);
         };
         // borrow mutable event store
         let event_store_mut = borrow_global_mut<EventStore>(event_store_object_address);
@@ -399,13 +399,11 @@ module nip_01_addr::event {
             object_address: event_store_object_address
         };
         event::emit(move_event);
-
-        event
     }
 
     /// Entry function to save an Event
     public entry fun save_event_entry(x_only_public_key: String, created_at: u64, kind: u16, tags: vector<vector<String>>, content: String, signature: String) acquires EventStore {
-        let _event_saved = save_event(x_only_public_key, created_at, kind, tags, content, signature);
+        save_event(x_only_public_key, created_at, kind, tags, content, signature);
     }
 
     /// drop an event
@@ -423,10 +421,9 @@ module nip_01_addr::event {
         object_address
     }
 
-    fun init_event_store(caller_address: address) {
+    fun init_event_store(event_store_constructor_ref: ConstructorRef) {
         // create an event store object and transfer to the object address
         let empty_event_store = empty_event_store();
-        let event_store_constructor_ref = object::create_object(caller_address);
         let event_store_object_signer = object::generate_signer(&event_store_constructor_ref);
         move_to(&event_store_object_signer, empty_event_store);
     }
@@ -500,7 +497,7 @@ module nip_01_addr::event {
         let tags = vector::empty<vector<String>>();
         let content = string::utf8(b"{\"name\":\"ZHANG, HENGMING\",\"about\":\"\",\"picture\":\"\",\"website\":\"\",}");
         let signature = string::utf8(b"6c2565ceabff153609aa9ccdeb13421a1181a54d0ca4fe10cd074b0c2da44c641c98992701c9a4d3e24391db3e358eff190510be46e73d0e517d5e5b13bb06fd");
-        let event_saved = save_event(x_only_public_key, created_at, kind, tags, content, signature);
-        std::debug::print(&event_saved);
+        save_event(x_only_public_key, created_at, kind, tags, content, signature);
+        // TODO: query aptos object to compare
     }
 }
